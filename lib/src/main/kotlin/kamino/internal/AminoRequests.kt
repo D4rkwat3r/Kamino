@@ -6,6 +6,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.http.content.*
+import kamino.NDCLANG
 import kamino.internal.model.SessionInfo
 import kamino.exception.AminoException
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -23,6 +24,7 @@ class AminoRequests {
         explicitNulls = false
     }
     var sessionInfo: SessionInfo? = null
+    var lang: NDCLANG = NDCLANG.EN
 
     private suspend fun HttpResponse.checkResponse(): HttpResponse {
         if (status.value !in (200..299)) {
@@ -38,8 +40,7 @@ class AminoRequests {
                         contentType: ContentType? = null,
                         body: ByteArray? = null,
                         params: Map<String, String>? = null,
-                        deviceID: String? = null,
-                        lang: String = "en") = client.request {
+                        deviceID: String? = null) = client.request {
         method = HttpMethod.parse(requestMethod)
         val h = if (body == null) AminoHeaders.get() else {
             setBody(ByteArrayContent(body, contentType))
@@ -53,7 +54,7 @@ class AminoRequests {
             path("api/v1/$endpoint")
             params?.forEach { parameters.append(it.key, it.value) }
         }
-        headers(h.lang(lang)::use)
+        headers(h.lang(lang.headerString)::use)
     }.checkResponse()
 
     suspend inline fun <reified T> postJson(endpoint: String, data: T, deviceID: String? = null) = execute(

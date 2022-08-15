@@ -40,7 +40,7 @@ data class Community(
     @SerialName("listedStatus")
     val listedStatus: Int,
     @SerialName("mediaList")
-    val mediaList: List<MediaObject>,
+    val mediaList: List<MediaObject>?,
     @SerialName("membersCount")
     val membersCount: Int,
     @SerialName("modifiedTime")

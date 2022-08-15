@@ -25,12 +25,16 @@ class Amino(
 
     private val requests = AminoRequests()
     private val json: Json
-    get() = requests.json
+        get() = requests.json
     var ndc: String = "g"
-    set(value) { field = if (value.startsWith("x") || value == "g") value else "x$value" }
+        set(value) { field = if (value.startsWith("x") || value == "g") value else "x$value" }
     var community: String
-    get() = ndc
-    set(value) { ndc = value }
+        get() = ndc
+        set(value) { ndc = value }
+    var lang: NDCLANG
+        get() = requests.lang
+        set(value) { requests.lang = value }
+    var timezone: Int = 180
 
     constructor(
         phoneCode: String, phoneNumber: String, password: String
@@ -132,7 +136,7 @@ class Amino(
         requests.delete("$ndc/s/influencer/$userId/subscribe")
     }
 
-    suspend fun linkInfo(link: String): LinkInfoV2 {
+    suspend fun getLinkInfo(link: String): LinkInfoV2 {
         val response = requests.get("g/s/link-resolution", "q" to link)
         return json.decodeFromString<LinkResolutionResponse>(response.bodyAsText()).linkInfoV2
     }
@@ -149,5 +153,10 @@ class Amino(
     suspend fun getCommunityInfo(communityId: String): Community {
         val response = requests.get("g/s-x$communityId/community/info", "withInfluencerList" to "1", "withTopicList" to "true")
         return json.decodeFromString<CommunityInfoResponse>(response.bodyAsText()).community
+    }
+
+    suspend fun getWalletInfo(): Wallet {
+        val response = requests.get("g/s/wallet", "timezone" to timezone.toString())
+        return json.decodeFromString<WalletInfoResponse>(response.bodyAsText()).wallet
     }
 }
