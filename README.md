@@ -50,7 +50,6 @@ runBlocking {
 ```
 # Or
 ```kotlin
-// login by email
 val amino = Amino("email", "password")
 runBlocking {
     amino.loginByEmail()
