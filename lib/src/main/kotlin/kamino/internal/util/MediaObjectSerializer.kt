@@ -1,15 +1,13 @@
 package kamino.internal.util
 
-import kamino.internal.model.MediaObject
+import kamino.model.MediaObject
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.descriptors.serialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
 
 class MediaObjectSerializer : KSerializer<MediaObject> {
 
@@ -29,9 +27,13 @@ class MediaObjectSerializer : KSerializer<MediaObject> {
     }
 
     override fun serialize(encoder: Encoder, value: MediaObject) {
-        val encoded = if (value.identifier != null) """[${value.type}, "${value.url}", null, "${value.identifier}"]"""
-                      else """[${value.type}, "${value.url}", null]"""
-        return encoder.encodeString(encoded.trimIndent())
+        val jsonArray = buildJsonArray {
+            add(value.type as Number)
+            add(value.url)
+            add(JsonNull)
+            if (value.identifier != null) add(value.identifier)
+        }
+        return encoder.encodeSerializableValue(JsonArray.serializer(), jsonArray)
     }
 
 }

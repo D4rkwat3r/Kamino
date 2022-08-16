@@ -4,16 +4,18 @@
 package kamino
 
 import io.ktor.client.statement.*
-import kamino.internal.AminoHeaders
+import kamino.internal.AminoMobileHeaders
 import kamino.internal.AminoRequests
-import kamino.internal.model.*
-import kamino.internal.model.request.CreateFanClubRequest
-import kamino.internal.model.request.LoginRequest
-import kamino.internal.model.request.PaymentRequest
-import kamino.internal.model.response.*
+import kamino.internal.Constants
+import kamino.internal.util.ImageToPng
+import kamino.model.*
+import kamino.model.request.*
+import kamino.model.response.*
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
 
 class Amino(
@@ -26,6 +28,9 @@ class Amino(
     private val requests = AminoRequests()
     private val json: Json
         get() = requests.json
+    var currentSession: SessionInfo?
+        get() = requests.sessionInfo
+        set(value) { requests.sessionInfo = value }
     var ndc: String = "g"
         set(value) { field = if (value.startsWith("x") || value == "g") value else "x$value" }
     var community: String
@@ -57,14 +62,15 @@ class Amino(
         action: String = "normal",
         clientType: Int = 100
     ): SessionInfo {
-        val dev = deviceID ?: AminoHeaders.generateDeviceID()
+        val dev = deviceID ?: AminoMobileHeaders.generateDeviceID()
         val data = LoginRequest(
             action,
             clientType,
             dev,
             if (password != null) "0 $password" else secret.toString()
         )
-        if (email != null) data.email = email else if (phoneNumber != null) data.phoneNumber = phoneNumber
+        if (email != null) data.email = email
+        else if (phoneNumber != null) data.phoneNumber = phoneNumber
         val response = requests.postJson(
             "g/s/auth/login",
             data,
@@ -77,7 +83,7 @@ class Amino(
             decoded.account,
             decoded.userProfile
         )
-        requests.sessionInfo = session
+        currentSession = session
         return session
     }
 
@@ -150,7 +156,7 @@ class Amino(
         requests.delete("$ndc/s/influencer/$userId")
     }
 
-    suspend fun getCommunityInfo(communityId: String): Community {
+    suspend fun getCommunityInfo(communityId: Int): Community {
         val response = requests.get("g/s-x$communityId/community/info", "withInfluencerList" to "1", "withTopicList" to "true")
         return json.decodeFromString<CommunityInfoResponse>(response.bodyAsText()).community
     }
@@ -158,5 +164,285 @@ class Amino(
     suspend fun getWalletInfo(): Wallet {
         val response = requests.get("g/s/wallet", "timezone" to timezone.toString())
         return json.decodeFromString<WalletInfoResponse>(response.bodyAsText()).wallet
+    }
+
+    suspend fun getMyCommunities(start: Int, size: Int): List<CommunityPreview> {
+        val response = requests.get(
+            "g/s/community/joined",
+            "v" to "1",
+            "start" to start.toString(),
+            "size" to size.toString()
+        )
+        return json.decodeFromString<CommunityListResponse>(response.bodyAsText()).communityList
+    }
+
+    suspend fun getChatMessages(threadId: String, start: Int, size: Int): List<ChatMessage> {
+        val response = requests.get(
+            "$ndc/s/chat/thread/$threadId/message",
+            "start" to start.toString(),
+            "size" to size.toString()
+        )
+        return json.decodeFromString<ChatMessageListResponse>(response.bodyAsText()).messageList
+    }
+
+    suspend fun getUserProfile(userId: String): UserProfile {
+        val response = requests.get("$ndc/s/user-profile/$userId")
+        return json.decodeFromString<UserProfileResponse>(response.bodyAsText()).userProfile
+    }
+
+    suspend fun uploadMedia(media: ByteArray, type: MediaType): String {
+        requireNotNull(type.mimeString) { "Incorrect media type" }
+        val response = requests.postRawBytes("g/s/media/upload", media, type.mimeString)
+        return json.decodeFromString<MediaValueResponse>(response.bodyAsText()).mediaValue
+    }
+
+    private suspend fun sendMessage(
+        threadId: String,
+        content: String? = null,
+        type: Int,
+        mediaType: Int,
+        mediaUhqEnabled: Boolean? = null,
+        mediaUploadValue: String? = null,
+        mediaUploadValueContentType: String? = null,
+        mediaValue: String? = null,
+        embedObjectType: Int? = null,
+        embedLink: String? = null,
+        embedTitle: String? = null,
+        embedContent: String? = null,
+        embedImage: ByteArray? = null,
+        stickerId: String? = null,
+        mentions: List<String>? = null,
+        linkSnippets: List<SendMessageRequest.LinkSnippet>? = null
+    ): String {
+        val data = SendMessageRequest(content, type, mediaType)
+        if (mediaUploadValue != null) {
+            data.mediaUploadValue = mediaUploadValue
+            data.mediaUploadValueContentType = mediaUploadValueContentType
+            if (mediaUhqEnabled != null) data.mediaUhqEnabled = mediaUhqEnabled
+        } else if (mediaValue != null) data.mediaValue = mediaValue
+        if (embedObjectType != null) {
+            val attached = AttachedObject(
+                embedObjectType,
+                embedLink,
+                embedTitle,
+                embedContent,
+                if (embedImage != null)
+                    listOf(MediaObject(100, uploadMedia(embedImage, MediaType.IMAGE), null))
+                else null
+            )
+            data.attachedObject = attached
+        }
+        if (mentions != null) data.extensions.mentionedArray = mentions.map { Mention(it) }
+        if (linkSnippets != null) data.extensions.linkSnippetList = linkSnippets
+        if (stickerId != null) data.stickerId = stickerId
+        val response = requests.postJson("$ndc/s/chat/thread/$threadId/message", data)
+        return json.decodeFromString<JsonObject>(response.bodyAsText())["message"]!!.jsonObject["messageId"]!!.jsonPrimitive.content
+    }
+
+    suspend fun sendTextMessage(threadId: String,
+                                content: String,
+                                type: Int = MessageType.DEFAULT.identifier,
+                                mentions: List<String>? = null) = sendMessage(
+            threadId,
+            content,
+            type,
+            MediaType.DEFAULT.identifier,
+            mentions = mentions
+    )
+
+    suspend fun sendAudioMessage(threadId: String, audio: ByteArray, mentions: List<String>? = null) = sendMessage(
+        threadId,
+        null,
+        MessageType.AUDIO.identifier,
+        MediaType.AUDIO.identifier,
+        mediaUploadValue = Constants.encoder.encodeToString(audio)
+    )
+
+    suspend fun sendImageMessage(threadId: String, image: ByteArray, mentions: List<String>? = null) = sendMessage(
+        threadId,
+        null,
+        MessageType.DEFAULT.identifier,
+        MediaType.IMAGE.identifier,
+        mediaUploadValue = Constants.encoder.encodeToString(image),
+        mediaUploadValueContentType = MediaType.IMAGE.mimeString,
+        mediaUhqEnabled = true,
+        mentions = mentions
+    )
+
+    suspend fun sendGifMessage(threadId: String, gif: ByteArray, mentions: List<String>? = null) = sendMessage(
+        threadId,
+        null,
+        MessageType.DEFAULT.identifier,
+        MediaType.GIF.identifier,
+        mediaUploadValue = Constants.encoder.encodeToString(gif),
+        mediaUploadValueContentType = MediaType.GIF.mimeString,
+        mediaUhqEnabled = true,
+        mentions = mentions
+    )
+
+    suspend fun sendMessageWithEmbed(
+        threadId: String,
+        content: String,
+        embedTitle: String,
+        embedContent: String,
+        embedLink: String?,
+        embedObjectType: Int = 0,
+        embedImage: ByteArray? = null,
+        mentions: List<String>? = null
+    ) = sendMessage(
+        threadId,
+        content,
+        MessageType.DEFAULT.identifier,
+        MediaType.DEFAULT.identifier,
+        embedObjectType = embedObjectType,
+        embedLink = embedLink,
+        embedTitle = embedTitle,
+        embedContent = embedContent,
+        embedImage = embedImage,
+        mentions = mentions
+    )
+
+    suspend fun sendMessageWithLinkSnippet(
+        threadId: String,
+        content: String,
+        link: String,
+        linkPreviewImage: ByteArray
+    ) = sendMessage(
+        threadId,
+        content,
+        MessageType.DEFAULT.identifier,
+        MediaType.DEFAULT.identifier,
+        linkSnippets = listOf(
+            SendMessageRequest.LinkSnippet(
+                link,
+                MediaType.IMAGE.identifier,
+                Constants.encoder.encodeToString(ImageToPng(linkPreviewImage).get()),
+                MediaType.IMAGE_PNG.mimeString!!
+            )
+        )
+    )
+
+    suspend fun webSendTextMessage(threadId: String, content: String, type: Int = 0): String {
+        val response = requests.webPostJson(
+            "add-chat-message",
+            WebSendMessageRequest(
+                ndc,
+                threadId,
+                WebSendMessageRequest.Message(content, type)
+            )
+        )
+        return json.decodeFromString<JsonObject>(response.bodyAsText())["result"]!!.jsonObject["messageId"]!!.jsonPrimitive.content
+    }
+
+    suspend fun joinChat(threadId: String) {
+        requireNotNull(currentSession?.userProfile?.uid) { "Unauthorized" }
+        requests.postRawBytes(
+            "$ndc/s/chat/thread/$threadId/member/${currentSession!!.userProfile.uid}",
+            byteArrayOf(),
+            "application/x-www-form-urlencoded"
+        )
+    }
+
+    suspend fun leaveChat(threadId: String) {
+        requireNotNull(currentSession?.userProfile?.uid) { "Unauthorized" }
+        requests.delete("$ndc/s/chat/thread/$threadId/member/${currentSession!!.userProfile.uid}",)
+    }
+
+    suspend fun webJoinChat(threadId: String) {
+        requests.webPostJson("join-thread", WebChatMembershipChangeRequest(ndc, threadId))
+    }
+
+    suspend fun webLeaveChat(threadId: String) {
+        requests.webPostJson("leave-thread", WebChatMembershipChangeRequest(ndc, threadId))
+    }
+
+    suspend fun joinCommunity(ndcId: Int): UserProfile {
+        val response = requests.postRawBytes("x$ndcId/s/community/join", byteArrayOf(), "application/x-www-form-urlencoded")
+        return json.decodeFromString<UserProfileResponse>(response.bodyAsText()).userProfile
+    }
+
+    suspend fun leaveCommunity(ndcId: Int) {
+        requests.postRawBytes("x$ndcId/s/community/leave", byteArrayOf(), "application/x-www-form-urlencoded")
+    }
+
+    suspend fun webJoinCommunity(ndcId: Int): UserProfile {
+        val response = requests.webPostJson("join", WebCommunityMembershipChangeRequest(ndcId.toString()))
+        return json.decodeFromString<WebUserProfileResponse>(response.bodyAsText()).result.userProfile
+    }
+
+    suspend fun webLeaveCommunity(ndcId: Int) {
+        requests.webPostJson("leave", WebCommunityMembershipChangeRequest(ndcId.toString()))
+    }
+
+    suspend fun getChatThread(threadId: String): ChatThread {
+        val response = requests.get("$ndc/s/chat/thread/$threadId")
+        return json.decodeFromString<ChatThreadResponse>(response.bodyAsText()).thread
+    }
+
+    suspend fun getMyChatThreads(start: Int, size: Int): List<ChatThread> {
+        val response = requests.get(
+            "$ndc/s/chat/thread",
+            "type" to "joined-me",
+            "start" to start.toString(),
+            "size" to size.toString()
+        )
+        return json.decodeFromString<ChatThreadListResponse>(response.bodyAsText()).threadList
+    }
+
+    private suspend fun getAllChatThreads(start: Int, size: Int, filterType: String): List<ChatThread> {
+        val response = requests.get(
+            "$ndc/s/chat/thread",
+            "type" to "public-all",
+            "filterType" to filterType,
+            "start" to start.toString(),
+            "size" to size.toString()
+        )
+        return json.decodeFromString<ChatThreadListResponse>(response.bodyAsText()).threadList
+    }
+
+    suspend fun getRecommendedChatThreads(start: Int, size: Int) = getAllChatThreads(start, size, "recommended")
+    suspend fun getPopularChatThreads(start: Int, size: Int) = getAllChatThreads(start, size, "popular")
+    suspend fun getLatestChatThreads(start: Int, size: Int) = getAllChatThreads(start, size, "latest")
+
+    private suspend fun getUsers(start: Int, size: Int, type: String): List<UserProfile> {
+        val response = requests.get(
+            "$ndc/s/user-profile",
+            "start" to start.toString(),
+            "size" to size.toString(),
+            "type" to type
+        )
+        return json.decodeFromString<UserProfileListResponse>(response.bodyAsText()).userProfileList
+    }
+
+    suspend fun getLeaders(start: Int, size: Int) = getUsers(start, size, "leaders")
+    suspend fun getCurators(start: Int, size: Int) = getUsers(start, size, "curators")
+    suspend fun getRecentUsers(start: Int, size: Int) = getUsers(start, size, "recent")
+
+    suspend fun getOnlineUsers(start: Int, size: Int): List<UserProfile> {
+        val response = requests.get(
+            "$ndc/s/live-layer",
+            "topic" to "ndtopic:$ndc:online-members",
+            "start" to start.toString(),
+            "size" to size.toString()
+        )
+        return json.decodeFromString<UserProfileListResponse>(response.bodyAsText()).userProfileList
+    }
+
+    suspend fun startChat(invitedUserIds: List<String>,
+                          initialMessage: String,
+                          title: String? = null,
+                          content: String? = null,
+                          isGlobal: Boolean? = null,
+                          publishToGlobal: Boolean? = null): ChatThread {
+        val data = StartChatRequest(invitedUserIds, initialMessage, "", 0)
+        if (isGlobal == true) {
+            data.title = title ?: ""
+            data.content = content
+            data.type = 2
+            data.eventSource = "GlobalComposeMenu"
+        }
+        if (publishToGlobal == true) data.publishToGlobal = true
+        val response = requests.postJson("$ndc/s/chat/thread", data)
+        return json.decodeFromString<ChatThreadResponse>(response.bodyAsText()).thread
     }
 }
