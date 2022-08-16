@@ -18,7 +18,7 @@ implementation("io.ktor:ktor-client-cio:2.0.1")
 implementation("io.ktor:ktor-client-core:2.0.1")
 ```
 3. Add kotlinx.serialization plugin
-## Groovy gradle
+## Groovy Gradle
 ```groovy
 plugins {
     id 'org.jetbrains.kotlin.plugin.serialization' version '1.6.21'
