@@ -21,14 +21,23 @@ implementation("io.ktor:ktor-client-core:2.0.1")
 ## Groovy gradle
 ```groovy
 plugins {
-    ...
     id 'org.jetbrains.kotlin.plugin.serialization' version '1.6.21'
 }
 ```
 ## Kotlin Gradle
 ```kotlin
 plugins {
-    ...
     id("org.jetbrains.kotlin.plugin.serialization") version "1.6.21"
 }
 ```
+4. Add main dependency
+## Groovy Gradle
+```groovy
+implementation files('libs/kamino.jar')
+```
+## Kotlin Gradle
+```kotlin
+implementation(files("libs/kamino.jar"))
+```
+5. Import the Amino class and start using it
+
