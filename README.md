@@ -3,7 +3,7 @@ Wrapper for Amino API on Kotlin
 
 ### Usage
 
-1. Put .jar file to «your module»/libs
+1. Put kamino.jar file to «your module»/libs
 2. Add dependencies
 ## Groovy Gradle
 ```groovy
