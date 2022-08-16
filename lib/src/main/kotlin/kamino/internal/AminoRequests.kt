@@ -74,7 +74,6 @@ class AminoRequests {
         } else {
             AminoMobileHeaders.getWith(body)
         }
-        println(body?.toString(Charsets.UTF_8))
         if (body != null) setBody(ByteArrayContent(body, contentType))
         if (deviceID != null) (h as AminoMobileHeaders).device(deviceID)
         if (sessionInfo != null) h.sid("sid=${sessionInfo?.sid}")
