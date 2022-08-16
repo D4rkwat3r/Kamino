@@ -41,63 +41,63 @@ implementation(files("libs/kamino.jar"))
 ```
 5. Import the Amino class and start using it
 
-# Login by email
+### Login by email
 ```kotlin
 val amino = Amino()
 runBlocking {
     amino.loginByEmail("email", "password")
 }
 ```
-# Or
+### Or
 ```kotlin
 val amino = Amino("email", "password")
 runBlocking {
     amino.loginByEmail()
 }
 ```
-# Login by phone number
+### Login by phone number
 ```kotlin
 val amino = Amino()
 runBlocking {
     amino.loginByPhoneNumber("phone number", "password")
 }
 ```
-# Or
+### Or
 ```kotlin
 val amino = Amino("phone code", "phone number", "password")
 runBlocking {
     amino.loginByPhoneNumber()
 }
 ```
-# Login by secret
+### Login by secret
 ```kotlin
 val amino = Amino()
 runBlocking {
     amino.loginBySecret("secret")
 }
 ```
-# Or
+### Or
 ```kotlin
 val amino = Amino("secret")
 runBlocking {
     amino.loginBySecret()
 }
 ```
-# Automatically detect the login method 
+### Automatically detect the login method 
 ```kotlin
 val amino = Amino("email", "password")
 runBlocking {
     amino.login()
 }
 ```
-# All login... methods can accept device id
+### All login... methods can accept device id
 ```kotlin
 val amino = Amino()
 runBlocking {
     amino.loginByEmail("email", "password", deviceID = "device id")
 }
 ```
-# All login... methods return account information
+### All login... methods return account information
 ```kotlin
 val amino = Amino()
 runBlocking {
